@@ -134,12 +134,8 @@ type JournalNoteColumns = '[ "id"             :-> Expr EventId
                            , "event_type"     :-> Expr EventType
                            , "note_type"      :-> Expr NoteType
                            , "parent_id"      :-> Expr (Maybe EventId)
-                           , "plain_text"     :-> Expr String
-                           , "logged_time"    :-> Expr (Maybe Int)
-                           , "approved_time"  :-> Expr (Maybe Int)
-                           , "planned_time"   :-> Expr (Maybe Int)
-                           , "modified_at"    :-> Expr UTCTime
-                           , "modified_by"    :-> Expr UserId
+                           --, "modified_at"    :-> Expr UTCTime
+                           --, "modified_by"    :-> Expr UserId
                            ]
 
 type JournalExpandedColumns = '[ "id"             :-> Expr EventId
@@ -148,14 +144,10 @@ type JournalExpandedColumns = '[ "id"             :-> Expr EventId
                                , "event_type"     :-> Expr EventType
                                , "note_type"      :-> Expr NoteType
                                , "parent_id"      :-> Expr (Maybe EventId)
-                               , "plain_text"     :-> Expr String
-                               , "logged_time"    :-> Expr (Maybe Int)
-                               , "approved_time"  :-> Expr (Maybe Int)
-                               , "planned_time"   :-> Expr (Maybe Int)
                                , "created_at"     :-> Expr UTCTime
                                , "created_by"     :-> Expr UserId
-                               , "modified_at"    :-> Expr UTCTime
-                               , "modified_by"    :-> Expr UserId
+                               --, "modified_at"    :-> Expr UTCTime
+                               --, "modified_by"    :-> Expr UserId
                                ]
 
 join_note :: Rec (JournalEventColumns ++ JournalNoteColumns)
