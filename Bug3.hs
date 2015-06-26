@@ -18,15 +18,6 @@ import Control.Applicative (Const(..))
 
 data Expr a = Expr !Int String
 
--- Stubs
-data UTCTime = UTCTime
-data NoteType = NoteType
-data EventType = EventType
-data MetaData = MetaData
-
-newtype UserId = UserId Int
-newtype EventId = EventId Int
-
 newtype (:->) s a = Col { getCol :: a }
 
 data Nat = Z | S !Nat
