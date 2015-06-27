@@ -1,0 +1,279 @@
+Returning to this briefly with a fresh set of eyes, one thing has become more
+clear. It seems that some inlinings are producing much different results in the
+8af219adb914b292d0f8c737fe0a1e3f7fb19cf3 (the first failing commit) and
+`8af219adb914b292d0f8c737fe0a1e3f7fb19cf3^` (the last working commit).
+
+Consider this binding that arises in both commits out of the first simplifier
+phase,
+
+```haskell
+$crput_a22b
+  :: forall r_a21s s_a21t (rs_a21u :: [*]) (i_a21v :: Nat).
+     ('S i_a21v ~ RIndex r_a21s (s_a21t : rs_a21u),
+      RIndex r_a21s (s_a21t : rs_a21u) ~ 'S i_a21v,
+      RElem r_a21s rs_a21u i_a21v) =>
+     r_a21s -> Rec (s_a21t : rs_a21u) -> Rec (s_a21t : rs_a21u)
+[LclId, Arity=5, Str=DmdType]
+$crput_a22b =
+  \ (@ r_a21s) (@ s_a21t) (@ (rs_a21u :: [*])) (@ (i_a21v :: Nat))
+    (cobox_a21w :: 'S i_a21v ~ RIndex r_a21s (s_a21t : rs_a21u))
+    (cobox_a21x :: RIndex r_a21s (s_a21t : rs_a21u) ~ 'S i_a21v)
+    ($dRElem_a21y :: RElem r_a21s rs_a21u i_a21v)
+    (y_a1M3 :: r_a21s)
+    (eta_B1 :: Rec (s_a21t : rs_a21u)) ->
+    runIdentity
+      @ (Rec (s_a21t : rs_a21u))
+      ($crlens_a21B
+         @ r_a21s @ s_a21t @ rs_a21u @ i_a21v
+         cobox_a21w cobox_a21x
+         $dRElem_a21y
+         @ Proxy @ Identity
+         Data.Functor.Identity.$fFunctorIdentity
+         (Data.Proxy.Proxy @ * @ r_a21s)
+         ((\ _ [Occ=Dead] -> y_a1M3) `cast` ...)
+         eta_B1)
+```
+
+In the next simplifier phase we see that both commits begin simplification of this binding by inlining `runIdentity`,
+
+```
+SimplBind $crput_a22b
+Considering inlining: runIdentity
+  arg infos [NonTrivArg]
+  interesting continuation BoringCtxt
+  some_benefit True
+  is exp: True
+  is work-free: True
+  guidance ALWAYS_IF(arity=0,unsat_ok=True,boring_ok=True)
+  ANSWER = YES
+Inlining done: Data.Functor.Identity.runIdentity
+    Inlined fn:  Data.Functor.Identity.$fFoldableIdentity2 `cast` ...
+    Cont:   ApplyToTy (Bug.Rec (s : rs))
+            ApplyToVal nodup ($crlens
+                                @ r
+                                @ s
+                                @ rs
+                                @ i
+                                cobox_a21w
+                                cobox_a21x
+                                $dRElem_a21y
+                                @ Data.Proxy.Proxy
+                                @ Data.Functor.Identity.Identity
+                                Data.Functor.Identity.$fFunctorIdentity
+                                (Data.Proxy.Proxy @ * @ r)
+                                ((\ _ [Occ=Dead] -> y) `cast` ...)
+                                eta_B1)
+            Stop[BoringCtxt] Bug.Rec (s : rs)
+```
+
+This produces,
+
+```haskell
+$crput_a22b =
+  \ (@ r_a21s) (@ s_a21t) (@ (rs_a21u :: [*])) (@ (i_a21v :: Nat))
+    (cobox_a21w :: 'S i_a21v ~ RIndex r_a21s (s_a21t : rs_a21u))
+    (cobox_a21x :: RIndex r_a21s (s_a21t : rs_a21u) ~ 'S i_a21v)
+    ($dRElem_a21y :: RElem r_a21s rs_a21u i_a21v)
+    (y_a1M3 :: r_a21s)
+    (eta_B1 :: Rec (s_a21t : rs_a21u)) ->
+    (Data.Functor.Identity.$fFoldableIdentity2
+      @ (Rec (s_a21t : rs_a21u))
+      ($crlens_a21B
+         @ r_a21s @ s_a21t @ rs_a21u @ i_a21v
+         cobox_a21w cobox_a21x
+         $dRElem_a21y
+         @ Proxy @ Identity
+         Data.Functor.Identity.$fFunctorIdentity
+         (Data.Proxy.Proxy @ * @ r_a21s)
+         ((\ _ [Occ=Dead] -> y_a1M3) `cast` ...)
+         eta_B1) `cast` ...)
+```
+
+Now is when the two commits' behaviors diverge.
+
+**Working commit**
+
+The working commit decides to the inline `$fFoldableIdentity2` (the name here is
+quite perplexing; `Foldable` is never used in this testcase and the inlined
+function does not appear to be a dictionary)
+
+```
+Considering inlining: $fFoldableIdentity2
+  arg infos [NonTrivArg]
+  interesting continuation BoringCtxt
+  some_benefit True
+  is exp: True
+  is work-free: True
+  guidance ALWAYS_IF(arity=1,unsat_ok=True,boring_ok=True)
+  ANSWER = YES
+Inlining done: Data.Functor.Identity.$fFoldableIdentity2
+    Inlined fn:  \ (@ a4)
+                   (ds [Occ=Once] :: Data.Functor.Identity.Identity a4) ->
+                   ds
+    Cont:   ApplyToTy (Bug.Rec (s : rs))
+            ApplyToVal nodup (($crlens
+                                 @ r
+                                 @ s
+                                 @ rs
+                                 @ i
+                                 cobox_a21w
+                                 cobox_a21x
+                                 $dRElem_a21y
+                                 @ Data.Proxy.Proxy
+                                 @ Data.Functor.Identity.Identity
+                                 Data.Functor.Identity.$fFunctorIdentity
+                                 (Data.Proxy.Proxy @ * @ r)
+                                 ((\ _ [Occ=Dead] -> y) `cast` ...)
+                                 eta_B1)
+                              `cast` ...)
+            CastIt Nth:1
+                     ((forall a4.
+                       <Data.Functor.Identity.Identity a4>_R
+                       -> Data.Functor.Identity.NTCo:Identity[0] <a4>_R)@Bug.Rec (s : rs))
+            Stop[BoringCtxt] Bug.Rec (s : rs)
+```
+
+Which produces,
+
+```haskell
+$crput_a22b =
+  \ (@ r_a21s) (@ s_a21t) (@ (rs_a21u :: [*])) (@ (i_a21v :: Nat))
+    (cobox_a21w :: 'S i_a21v ~ RIndex r_a21s (s_a21t : rs_a21u))
+    (cobox_a21x :: RIndex r_a21s (s_a21t : rs_a21u) ~ 'S i_a21v)
+    ($dRElem_a21y :: RElem r_a21s rs_a21u i_a21v)
+    (y_a1M3 :: r_a21s)
+    (eta_B1 :: Rec (s_a21t : rs_a21u)) ->
+    (($crlens_a21B
+       @ r_a21s @ s_a21t @ rs_a21u @ i_a21v
+       cobox_a21w cobox_a21x
+       $dRElem_a21y
+       @ Proxy @ Identity
+       Data.Functor.Identity.$fFunctorIdentity
+       (Data.Proxy.Proxy @ * @ r_a21s)
+       ((\ _ [Occ=Dead] -> y_a1M3) `cast` ...)
+       eta_B1)
+     :: Identity (Rec (s_a21t : rs_a21u))
+    ) `cast` ...
+```
+
+Next `$crlens_a21B` is inlined, resulting in,
+
+
+```haskell
+$crput_a22b =
+  \ @r @s (@ (rs :: [*])) (@ (i :: Nat))
+    (cobox_a21w :: 'S i_a21v ~ RIndex r_a21s (s_a21t : rs_a21u))
+    (cobox_a21x :: RIndex r_a21s (s_a21t : rs_a21u) ~ 'S i_a21v)
+    ($dRElem :: RElem r rs i)
+    (y_a1M3 :: r)
+    (eta_B1 :: Rec (s : rs)) ->
+    (case eta_B1 of _ [Occ=Dead] {
+      :& @r @rs dt_d2bF x xs ->
+        fmap
+          @g @dFunctor_a21F @(Rec rs) @(Rec (s:rs))
+          ($W:& @s @rs (x `cast` ...))
+          (rlens @r @rs @i $dElem @sing @g $dFunctor_a21F p f (xs `cast` ...))
+    }) `cast` ...
+```
+
+Next `$fFunctorIdentity_$cfmap` and then `$fFunctorIdentity2` are inlined,
+
+```haskell
+$crput_a22b =
+  \ @r @s (@ (rs :: [*])) (@ (i :: Nat))
+    (cobox_a21w :: 'S i_a21v ~ RIndex r_a21s (s_a21t : rs_a21u))
+    (cobox_a21x :: RIndex r_a21s (s_a21t : rs_a21u) ~ 'S i_a21v)
+    ($dRElem :: RElem r rs i)
+    (y_a1M3 :: r)
+    (eta_B1 :: Rec (s : rs)) ->
+    (case eta_B1 of _ [Occ=Dead] {
+      :& @r @rs dt_d2bF x xs ->
+        $W:& @s @rs
+          (x `cast` ...)
+          (rlens @r @rs @i $dElem @sing @g $dFunctor_a21F p f (xs `cast` ...))
+    }) `cast` ...
+```
+
+Now inline `$W:&`,
+
+```haskell
+$crput_a22b =
+  \ @r @s (@ (rs :: [*])) (@ (i :: Nat))
+    (cobox_a21w :: 'S i_a21v ~ RIndex r_a21s (s_a21t : rs_a21u))
+    (cobox_a21x :: RIndex r_a21s (s_a21t : rs_a21u) ~ 'S i_a21v)
+    ($dRElem :: RElem r rs i)
+    (y_a1M3 :: r)
+    (eta_B1 :: Rec (s : rs)) ->
+    (case eta_B1 of _ [Occ=Dead] {
+      case x `cast` ... of dt_X1PR { __DEFAULT ->
+      case rlens @r @rs @i $dElem @sing @g $dFunctor_a21F p f (xs `cast` ...) of dt_X1PT { __DEFAULT ->
+        :& @(r:rs) @r @rs @~<r : rs>_N dt_X1PR dt_X1PT
+      }
+      }
+    }) `cast` ...
+```
+
+
+**Failing commit**
+Whereas the failing commit doesn't even mention `$fFoldableIdentity2`, instead jumping right to `$crlens_a21B`,
+
+```
+Considering inlining: $crlens_a21B
+  arg infos [TrivArg, TrivArg, TrivArg, ValueArg, ValueArg, ValueArg,
+             TrivArg]
+  interesting continuation BoringCtxt
+  some_benefit True
+  is exp: True
+  is work-free: True
+  guidance ALWAYS_IF(arity=6,unsat_ok=False,boring_ok=False)
+  ANSWER = YES
+Inlining done: $crlens
+    Inlined fn:  \ (@ r)
+                   (@ s)
+                   (@ (rs :: [*]))
+                   (@ (i :: Bug.Nat))
+                   _ [Occ=Dead]
+                   _ [Occ=Dead]
+                   ($dRElem_a21y [Occ=Once] :: Bug.RElem r rs i)
+                   (@ (sing :: * -> *))
+                   (@ (g :: * -> *))
+                   ($dFunctor_a21F :: GHC.Base.Functor g)
+                   (p [Occ=Once] :: sing r)
+                   (f [Occ=Once] :: r -> g r)
+                   (ds_d2b5 [Occ=Once!] :: Bug.Rec (s : rs)) ->
+                   case ds_d2b5
+                   of _ [Occ=Dead]
+                   { Bug.:& @ r @ rs dt_d2bF x [Occ=Once] xs [Occ=Once] ->
+                   GHC.Base.fmap
+                     @ g
+                     $dFunctor_a21F
+                     @ (Bug.Rec rs)
+                     @ (Bug.Rec (s : rs))
+                     (Bug.$W:& @ s @ rs (x `cast` ...))
+                     (Bug.rlens
+                        @ r
+                        @ rs
+                        @ i
+                        $dRElem_a21y
+                        @ sing
+                        @ g
+                        $dFunctor_a21F
+                        p
+                        f
+                        (xs `cast` ...))
+                   }
+    Cont:   ApplyToTy r
+            ApplyToTy s
+            ApplyToTy rs
+            ApplyToTy i
+            ApplyToVal nodup cobox_a21w
+            ApplyToVal nodup cobox_a21x
+            ApplyToVal nodup $dRElem_a21y
+            ApplyToTy Data.Proxy.Proxy
+            ApplyToTy Data.Functor.Identity.Identity
+            ApplyToVal nodup Data.Functor.Identity.$fFunctorIdentity
+            ApplyToVal nodup (Data.Proxy.Proxy @ * @ r)
+            ApplyToVal nodup ((\ _ [Occ=Dead] -> y) `cast` ...)
+            ApplyToVal nodup eta_B1
+            Stop[BoringCtxt] Data.Functor.Identity.Identity (Bug.Rec (s : rs))
+```
